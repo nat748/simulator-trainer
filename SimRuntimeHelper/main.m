@@ -125,11 +125,13 @@
     if (![[NSFileManager defaultManager] fileExistsAtPath:overlayPath]) {
         NSError *createError = nil;
         [[NSFileManager defaultManager] createDirectoryAtPath:overlayPath withIntermediateDirectories:YES attributes:nil error:&createError];
-        if (createError && error) {
-            *error = createError;
+        if (createError) {
+            if (error) {
+                *error = createError;
+            }
+            
+            return NO;
         }
-        
-        return NO;
     }
     
     if (create_or_remount_overlay_symlinks(overlayPath.UTF8String) != 0) {

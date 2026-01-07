@@ -8,6 +8,7 @@
 #import "AppBinaryPatcher.h"
 #import "CommandRunner.h"
 #import <mach-o/loader.h>
+#import <mach-o/fat.h>
 
 @implementation AppBinaryPatcher
 
@@ -90,7 +91,7 @@
     fread(&magic, sizeof(uint32_t), 1, file);
     fclose(file);
     
-    return (magic == MH_MAGIC || magic == MH_CIGAM || magic == MH_MAGIC_64 || magic == MH_CIGAM_64);
+    return (magic == MH_MAGIC || magic == MH_CIGAM || magic == MH_MAGIC_64 || magic == MH_CIGAM_64 || magic == FAT_MAGIC || magic == FAT_CIGAM || magic == FAT_MAGIC_64 || magic == FAT_CIGAM_64);
 }
 
 @end

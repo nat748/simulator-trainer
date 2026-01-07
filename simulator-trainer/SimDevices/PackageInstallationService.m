@@ -12,10 +12,55 @@
 #import "tmpfs_overlay.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
+#import <sys/mount.h>
+
 
 @implementation PackageInstallationService
 
+static inline BOOL _pathIsStrictAncestor(NSString *ancestor, NSString *path) {
+    if (![path hasPrefix:ancestor]) {
+        return NO;
+    }
+
+    if (path.length == ancestor.length) {
+        return NO;
+    }
+
+    unichar c = [path characterAtIndex:ancestor.length];
+    return (c == '/');
+}
+
+static NSArray<NSString *> *_mountPointsUnderRoot(NSString *root) {
+    struct statfs *mntbuf = NULL;
+    int n = getmntinfo(&mntbuf, MNT_NOWAIT);
+    if (n <= 0 || mntbuf == NULL) {
+        return @[];
+    }
+
+    NSMutableArray<NSString *> *mntPoints = [[NSMutableArray alloc] init];
+    for (int i = 0; i < n; i++) {
+        NSString *mp = [NSString stringWithUTF8String:mntbuf[i].f_mntonname];
+        if (_pathIsStrictAncestor(root, mp)) {
+            [mntPoints addObject:mp];
+        }
+    }
+
+    return mntPoints;
+}
+
+static BOOL _overlayRootIsUnsafe(NSString *absDir, NSArray<NSString *> *mountPoints) {
+    for (NSString *mntPoint in mountPoints) {
+        if (_pathIsStrictAncestor(absDir, mntPoint)) {
+            return YES;
+        }
+    }
+
+    return NO;
+}
+
 - (NSArray *)_minimalOverlayDirsForFilesToCopy:(NSDictionary<NSString *, NSString *> *)filesToCopy simRuntimeRoot:(NSString *)simRuntimeRoot {
+    NSArray<NSString *> *mountPoints = _mountPointsUnderRoot(simRuntimeRoot);
+
     NSMutableSet *parentDirs = [[NSMutableSet alloc] init];
     for (NSString *destPath in filesToCopy.allValues) {
         if (![destPath hasPrefix:simRuntimeRoot]) {
@@ -31,17 +76,7 @@
         if (parentDir.length == 0) {
             continue;
         }
-        
-        NSString *checkPath = [simRuntimeRoot stringByAppendingPathComponent:parentDir];
-        while (![ [NSFileManager defaultManager] fileExistsAtPath:checkPath isDirectory:NULL]) {
-            parentDir = [parentDir stringByDeletingLastPathComponent];
-            if (parentDir.length == 0) {
-                break;
-            }
-            
-            checkPath = [simRuntimeRoot stringByAppendingPathComponent:parentDir];
-        }
-        
+
         if (parentDir.length == 0) {
             continue;
         }
@@ -52,9 +87,22 @@
     NSArray *sortedDirs = [[parentDirs allObjects] sortedArrayUsingSelector:@selector(compare:)];
     NSMutableArray *minimalOverlays = [[NSMutableArray alloc] init];
     for (NSString *dir in sortedDirs) {
+        NSString *absDir = [simRuntimeRoot stringByAppendingPathComponent:dir];
+
+        if (_overlayRootIsUnsafe(absDir, mountPoints)) {
+            continue;
+        }
+
         BOOL covered = NO;
         for (NSString *existing in minimalOverlays) {
-            if ([dir hasPrefix:existing] && (dir.length == existing.length || [dir characterAtIndex:existing.length] == '/')) {
+            NSString *absExisting = [simRuntimeRoot stringByAppendingPathComponent:existing];
+
+            if (_overlayRootIsUnsafe(absExisting, mountPoints)) {
+                continue;
+            }
+
+            if ([dir hasPrefix:existing] &&
+                (dir.length == existing.length || [dir characterAtIndex:existing.length] == '/')) {
                 covered = YES;
                 break;
             }
@@ -244,8 +292,8 @@
             }
             return;
         }
-        
-        if ([destinationPath.pathExtension isEqualToString:@"dylib"] && ![AppBinaryPatcher isBinaryArm64SimulatorCompatible:destinationPath]) {
+
+        if ([AppBinaryPatcher isMachOFile:destinationPath] && ![AppBinaryPatcher isBinaryArm64SimulatorCompatible:destinationPath]) {
             // Convert to simulator platform and then codesign
             [AppBinaryPatcher thinBinaryAtPath:destinationPath];
             convertPlatformToSimulator(destinationPath.UTF8String);

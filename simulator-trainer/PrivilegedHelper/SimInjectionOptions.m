@@ -19,6 +19,7 @@
     [coder encodeObject:self.victimPathForTweakLoader forKey:@"victimPathForTweakLoader"];
     [coder encodeObject:self.optoolPath forKey:@"optoolPath"];
     [coder encodeObject:self.filesToCopy forKey:@"filesToCopy"];
+    [coder encodeObject:self.directoryPathsToCreate forKey:@"directoryPathsToCreate"];
 }
 
 - (instancetype)initWithCoder:(NSCoder *)coder {
@@ -30,6 +31,9 @@
         
         NSSet *allowedClasses = [NSSet setWithObjects:[NSDictionary class], [NSString class], [NSString class], nil];
         _filesToCopy = [coder decodeObjectOfClasses:allowedClasses forKey:@"filesToCopy"];
+        
+        allowedClasses = [NSSet setWithObjects:[NSArray class], [NSString class], nil];
+        _directoryPathsToCreate = [coder decodeObjectOfClasses:allowedClasses forKey:@"directoryPathsToCreate"];
     }
 
     return self;

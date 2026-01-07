@@ -47,14 +47,26 @@
     ];
 }
 
-- (NSDictionary *)bootstrapFilesToCopy {
+- (NSDictionary *)resourceFilesToCopy {
     NSDictionary *resourceFileMap = @{
+        // FLEX tweak
         @"FLEX.dylib": @"/Library/MobileSubstrate/DynamicLibraries/FLEX.dylib",
         @"FLEX.plist": @"/Library/MobileSubstrate/DynamicLibraries/FLEX.plist",
+        
+        // Cydia Substrate / libhooker
         @"CydiaSubstrate": @"/Library/Frameworks/CydiaSubstrate.framework/CydiaSubstrate",
         @"libsubstrate.dylib": @"/usr/lib/libsubstrate.dylib",
         @"libhooker.dylib": @"/usr/lib/libhooker.dylib",
+        
+        // Tweak loader
         @"loader.dylib": @"/usr/lib/loader.dylib",
+        
+        // Preference Loader
+        @"PreferenceLoader.dylib": @"/Library/MobileSubstrate/DynamicLibraries/PreferenceLoader.dylib",
+        @"PreferenceLoader.plist": @"/Library/MobileSubstrate/DynamicLibraries/PreferenceLoader.plist",
+        @"libprefs.dylib": @"/usr/lib/libprefs.dylib",
+        
+        // Cycript
         @"cycript_server.dylib": @"/Library/MobileSubstrate/DynamicLibraries/cycript_server.dylib",
         @"cycript_server.plist": @"/Library/MobileSubstrate/DynamicLibraries/cycript_server.plist",
         @"libcycript.dylib": @"/usr/lib/libcycript.dylib",

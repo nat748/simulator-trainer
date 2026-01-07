@@ -18,7 +18,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (NSString * _Nonnull)tweakLoaderDylibPath;
 - (NSArray <NSString *> *)directoriesToOverlay;
-- (NSDictionary *)bootstrapFilesToCopy;
+- (NSDictionary *)resourceFilesToCopy;
 - (BOOL)isJailbroken;
 - (void)reboot;
 - (void)respring;

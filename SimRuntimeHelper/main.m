@@ -51,6 +51,18 @@
     if (![[NSFileManager defaultManager] fileExistsAtPath:options.tweakLoaderDestinationPath]) {
         [[NSFileManager defaultManager] copyItemAtPath:options.tweakLoaderSourcePath toPath:options.tweakLoaderDestinationPath error:&error];
     
+        for (NSString *dirPath in options.directoryPathsToCreate) {
+            if (![[NSFileManager defaultManager] fileExistsAtPath:dirPath]) {
+                NSError *dirError = nil;
+                [[NSFileManager defaultManager] createDirectoryAtPath:dirPath withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions:@(0777)} error:&dirError];
+                if (dirError) {
+                    NSLog(@"Failed to create directory at path: %@ with error: %@", dirPath, dirError);
+                    error = dirError;
+                    break;
+                }
+            }
+        }
+
         for (NSString *sourcePath in options.filesToCopy) {
             NSString *targetPath = options.filesToCopy[sourcePath];
             if ([[NSFileManager defaultManager] fileExistsAtPath:targetPath]) {

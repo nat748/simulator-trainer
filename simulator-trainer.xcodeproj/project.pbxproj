@@ -112,8 +112,10 @@
 				"Supporting Files/bootstrap/libcycript.dylib",
 				"Supporting Files/bootstrap/libhooker.dylib",
 				"Supporting Files/bootstrap/libobjsee.dylib",
+				"Supporting Files/bootstrap/libprefs.dylib",
 				"Supporting Files/bootstrap/libsubstrate.dylib",
 				"Supporting Files/bootstrap/loader.dylib",
+				"Supporting Files/bootstrap/PreferenceLoader.dylib",
 			);
 			target = 5FC346D42DC0A55100572D7F /* simulator-trainer */;
 		};
@@ -130,8 +132,10 @@
 				"Supporting Files/bootstrap/libcycript.dylib",
 				"Supporting Files/bootstrap/libhooker.dylib",
 				"Supporting Files/bootstrap/libobjsee.dylib",
+				"Supporting Files/bootstrap/libprefs.dylib",
 				"Supporting Files/bootstrap/libsubstrate.dylib",
 				"Supporting Files/bootstrap/loader.dylib",
+				"Supporting Files/bootstrap/PreferenceLoader.dylib",
 			);
 		};
 /* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */

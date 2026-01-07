@@ -16,6 +16,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSString *victimPathForTweakLoader;
 @property (nonatomic, strong) NSString *optoolPath;
 @property (nonatomic, strong) NSDictionary *filesToCopy;
+@property (nonatomic, strong) NSArray *directoryPathsToCreate;
 
 @end
 

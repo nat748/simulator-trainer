@@ -151,7 +151,14 @@
         options.victimPathForTweakLoader = [device libObjcPath];
         options.tweakLoaderSourcePath = [[NSBundle mainBundle] pathForResource:@"loader" ofType:@"dylib"];
         options.optoolPath = [[NSBundle mainBundle] pathForResource:@"optool" ofType:nil];
-        options.filesToCopy = [device bootstrapFilesToCopy];
+        options.filesToCopy = [device resourceFilesToCopy];
+        
+        NSString *runtimeRoot = device.runtimeRoot;
+        options.directoryPathsToCreate = @[
+            [runtimeRoot stringByAppendingString:@"/Library/MobileSubstrate/DynamicLibraries"],
+            [runtimeRoot stringByAppendingString:@"/Library/PreferenceLoader/Preferences"],
+            [runtimeRoot stringByAppendingString:@"/Library/PreferenceBundles"],
+        ];
         
         [self.helperConnection setupTweakInjectionWithOptions:options completion:^(NSError *injectionError) {
             if (injectionError) {

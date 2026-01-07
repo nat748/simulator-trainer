@@ -7,6 +7,7 @@
 
 #import "AppBinaryPatcher.h"
 #import "CommandRunner.h"
+#import <mach-o/loader.h>
 
 @implementation AppBinaryPatcher
 
@@ -77,6 +78,19 @@
     NSString *otoolOutput = [CommandRunner xcrunInvokeAndWait:@[@"otool", @"-l", binaryPath]];
     NSString *lipoOutput = [CommandRunner xcrunInvokeAndWait:@[@"lipo", @"-info", binaryPath]];
     return [lipoOutput containsString:@"arm64"] && [otoolOutput containsString:@"platform 7"];
+}
+
++ (BOOL)isMachOFile:(NSString *)filePath {
+    FILE *file = fopen([filePath UTF8String], "rb");
+    if (file == NULL) {
+        return NO;
+    }
+    
+    uint32_t magic = 0;
+    fread(&magic, sizeof(uint32_t), 1, file);
+    fclose(file);
+    
+    return (magic == MH_MAGIC || magic == MH_CIGAM || magic == MH_MAGIC_64 || magic == MH_CIGAM_64);
 }
 
 @end

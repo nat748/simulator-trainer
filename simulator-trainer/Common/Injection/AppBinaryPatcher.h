@@ -15,6 +15,7 @@ NS_ASSUME_NONNULL_BEGIN
 + (void)codesignItemAtPath:(NSString *)path completion:(void (^)(BOOL, NSError * _Nullable))completion;
 + (void)thinBinaryAtPath:(NSString *)binaryPath;
 + (BOOL)isBinaryArm64SimulatorCompatible:(NSString *)binaryPath;
++ (BOOL)isMachOFile:(NSString *)filePath;
 
 @end
 

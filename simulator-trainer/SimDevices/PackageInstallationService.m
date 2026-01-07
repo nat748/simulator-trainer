@@ -283,6 +283,25 @@
     
     convertPlatformToSimulator(tmpAppPath.UTF8String);
     
+    // Sign every executable in the app bundle
+    NSDirectoryEnumerator *dirEnumerator = [[NSFileManager defaultManager] enumeratorAtPath:tmpAppPath];
+    NSString *fileRelativePath;
+    while ((fileRelativePath = [dirEnumerator nextObject])) {
+        NSString *fullPath = [tmpAppPath stringByAppendingPathComponent:fileRelativePath];
+        BOOL isDir;
+        if (![[NSFileManager defaultManager] fileExistsAtPath:fullPath isDirectory:&isDir] || isDir) {
+            continue;
+        }
+        
+        if ([AppBinaryPatcher isMachOFile:fullPath]) {
+            [AppBinaryPatcher codesignItemAtPath:fullPath completion:^(BOOL success, NSError * _Nullable error) {
+                if (!success) {
+                    NSLog(@"Failed to codesign executable at path %@: %@", fullPath, error);
+                }
+            }];
+        }
+    }
+    
     NSError *installError = nil;
     NSURL *tmpAppUrl = [NSURL fileURLWithPath:tmpAppPath];
     // [device.coreSimDevice installApplication:tmpAppUrl withOptions:nil error:&installError]

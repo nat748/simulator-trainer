@@ -5,9 +5,9 @@ License text: LICENSES/COPYING.LGPL-3.0.txt
 
 FLEX.dylib  
 Copyright (c) 2014–2016, Flipboard  
-License: BSD-style license with additional restrictions
-Source: https://github.com/FLEXTool/FLEX
-License text: LICENSES/Flipboard-BSD.txt
+License: BSD-style license with additional restrictions  
+Source: https://github.com/FLEXTool/FLEX  
+License text: LICENSES/Flipboard-BSD.txt  
 
 cycript.dylib  
 Copyright (c) Jay Freeman (saurik)  

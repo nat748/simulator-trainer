@@ -68,6 +68,8 @@
         [CommandRunner runCommand:@"/usr/bin/xcode-select" withArguments:@[@"--print-path"] stdoutString:&xcodeDeveloperPath error:nil];
         if (!xcodeDeveloperPath || ![xcodeDeveloperPath hasSuffix:@"/Contents/Developer"]) {
             NSLog(@"Failed to get Xcode Developer path -- cannot find Simulator.app");
+            
+            [NSException raise:@"InProcessSimulatorException" format:@"Failed to get Xcode Developer path. Use xcode-select to set the correct Xcode path."];
         }
         else {
             simulatorBundlePath = [xcodeDeveloperPath stringByAppendingPathComponent:@"Applications/Simulator.app"];
@@ -104,7 +106,9 @@
     
     // Convert the simulator executable into a dylib (in-place)
     [AppBinaryPatcher thinBinaryAtPath:simulatorDylibTmpPath];
-    if (!convert_to_dylib_inplace(simulatorDylibTmpPath.UTF8String)) {
+    
+    const char *new_rpath = "@loader_path/";
+    if (!convert_to_dylib_inplace(simulatorDylibTmpPath.UTF8String, new_rpath)) {
         NSLog(@"Failed to convert Simulator.app to dylib");
         [[NSFileManager defaultManager] removeItemAtPath:simulatorDylibTmpPath error:nil];
         return;
@@ -130,11 +134,18 @@
             [[NSFileManager defaultManager] removeItemAtPath:simulatorDylibTmpPath error:nil];
             return;
         }
-        
+                
+        // Create the symlink. If one already exist, it needs to be replaced -- it might point to the wrong location (e.g. `xcode-select -s` was used since last run).
+        // It's removed without checking if it actually exists, because fileExistsAtPath:'s behavior is to follow symlinks. If the existing symlink is broken, it will return NO.
         NSString *simulatorKitSymlinkPath = [[simulatorDylibTmpPath stringByDeletingLastPathComponent] stringByAppendingPathComponent:@"SimulatorKit.framework"];
+        [[NSFileManager defaultManager] removeItemAtPath:simulatorKitSymlinkPath error:nil];
+        
         NSError *symlinkError = nil;
-        if (![[NSFileManager defaultManager] fileExistsAtPath:simulatorKitSymlinkPath]) {
-            [[NSFileManager defaultManager] createSymbolicLinkAtPath:simulatorKitSymlinkPath withDestinationPath:simulatorKitFrameworkPath error:&symlinkError];
+        [[NSFileManager defaultManager] createSymbolicLinkAtPath:simulatorKitSymlinkPath withDestinationPath:simulatorKitFrameworkPath error:&symlinkError];
+        if (symlinkError) {
+            NSLog(@"Failed to create SimulatorKit.framework symlink: %@", symlinkError);
+            [[NSFileManager defaultManager] removeItemAtPath:simulatorDylibTmpPath error:nil];
+            return;
         }
         
         if (completion) {

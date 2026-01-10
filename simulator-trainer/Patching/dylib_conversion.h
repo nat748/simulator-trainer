@@ -10,6 +10,7 @@
 
 #include <CoreFoundation/CoreFoundation.h>
 
-bool convert_to_dylib_inplace(const char *input_path);
+bool convert_to_dylib_inplace(const char *input_path, const char *new_rpath);
+
 
 #endif /* dylib_conversion_h */

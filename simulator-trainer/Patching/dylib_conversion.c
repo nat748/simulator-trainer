@@ -15,7 +15,7 @@
 #include <unistd.h>
 
 
-bool convert_to_dylib_inplace(const char *input_path) {
+bool convert_to_dylib_inplace(const char *input_path, const char *new_rpath) {
     if (input_path == NULL || input_path[0] == '\0') {
         return false;
     }
@@ -36,6 +36,10 @@ bool convert_to_dylib_inplace(const char *input_path) {
     tool_config_t config = {0};
     config.input_path = input_path;
     config.convert_to_dylib = true;
+    
+    if (new_rpath != NULL) {
+        config.add_rpath = new_rpath;
+    }
 
     process_binaries_in_directory(config.input_path, &config);
 

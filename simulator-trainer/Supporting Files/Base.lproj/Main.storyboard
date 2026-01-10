@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<document type="com.apple.InterfaceBuilder3.Cocoa.Storyboard.XIB" version="3.0" toolsVersion="23504" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" initialViewController="B8D-0N-5wS">
+<document type="com.apple.InterfaceBuilder3.Cocoa.Storyboard.XIB" version="3.0" toolsVersion="24506" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" initialViewController="B8D-0N-5wS">
     <dependencies>
-        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="23504"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="24506"/>
         <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
     </dependencies>
     <scenes>
@@ -793,7 +793,7 @@
                         <outlet property="respringButton" destination="fJQ-AO-gXb" id="KtM-L2-EBg"/>
                         <outlet property="shutdownButton" destination="IIW-vo-Gkt" id="vDz-Qb-9B8"/>
                         <outlet property="statusImageView" destination="LFh-8W-YWD" id="LRU-zR-tLm"/>
-                        <outlet property="tweakStatus" destination="VRw-OZ-KFT" id="xc7-mM-adv"/>
+                        <outlet property="statusLabel" destination="VRw-OZ-KFT" id="xc7-mM-adv"/>
                     </connections>
                 </viewController>
                 <customObject id="rPt-NT-nkU" userLabel="First Responder" customClass="NSResponder" sceneMemberID="firstResponder"/>

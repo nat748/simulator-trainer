@@ -171,44 +171,46 @@
         // Boot completed. Refresh the device state, check for errors, then notify the delegate/completionHandler
         [self reloadDeviceState];
         
-        if (error) {
-            if (self.delegate && [self.delegate respondsToSelector:@selector(device:didFailToBootWithError:)]) {
-                [self.delegate device:self didFailToBootWithError:error];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (error) {
+                if (self.delegate && [self.delegate respondsToSelector:@selector(device:didFailToBootWithError:)]) {
+                    [self.delegate device:self didFailToBootWithError:error];
+                }
+                
+                if (completion) {
+                    completion(error);
+                }
+            }
+            else {
+                // Done booting (or failed to boot), notify the delegate if needed.
+                if (bootingForReboot && [self.delegate respondsToSelector:@selector(deviceDidReboot:)]) {
+                    // Reboot-boots fire a different delegate method
+                    [self.delegate deviceDidReboot:self];
+                }
+                else if (!bootingForReboot && self.isBooted && [self.delegate respondsToSelector:@selector(deviceDidBoot:)]) {
+                    // Device is booted
+                    SimulatorWrapper *bootedDevice = ((id (*)(id, SEL, id))objc_msgSend)(NSClassFromString(@"BootedSimulatorWrapper"), NSSelectorFromString(@"fromSimulatorWrapper:"), self);
+                    [self.delegate deviceDidBoot:bootedDevice];
+                }
+                else if (!bootingForReboot && !self.isBooted && [self.delegate respondsToSelector:@selector(device:didFailToBootWithError:)]) {
+                    // Device was booting, but failed to boot
+                    [self.delegate deviceDidBoot:self];
+                }
+                else if (!self.isBooted && [self.delegate respondsToSelector:@selector(device:didFailToBootWithError:)]) {
+                    // No errors were raised, but the device remains unbooted
+                    [self.delegate device:self didFailToBootWithError:[NSError errorWithDomain:NSCocoaErrorDomain code:1 userInfo:@{NSLocalizedDescriptionKey: @"Device failed to boot"}]];
+                }
             }
             
             if (completion) {
-                completion(error);
+                if (self.isBooted) {
+                    completion(nil);
+                }
+                else {
+                    completion([NSError errorWithDomain:NSCocoaErrorDomain code:1 userInfo:@{NSLocalizedDescriptionKey: @"Failed to boot device"}]);
+                }
             }
-        }
-        else {
-            // Done booting (or failed to boot), notify the delegate if needed.
-            if (bootingForReboot && [self.delegate respondsToSelector:@selector(deviceDidReboot:)]) {
-                // Reboot-boots fire a different delegate method
-                [self.delegate deviceDidReboot:self];
-            }
-            else if (!bootingForReboot && self.isBooted && [self.delegate respondsToSelector:@selector(deviceDidBoot:)]) {
-                // Device is booted
-                SimulatorWrapper *bootedDevice = ((id (*)(id, SEL, id))objc_msgSend)(NSClassFromString(@"BootedSimulatorWrapper"), NSSelectorFromString(@"fromSimulatorWrapper:"), self);
-                [self.delegate deviceDidBoot:bootedDevice];
-            }
-            else if (!bootingForReboot && !self.isBooted && [self.delegate respondsToSelector:@selector(device:didFailToBootWithError:)]) {
-                // Device was booting, but failed to boot
-                [self.delegate deviceDidBoot:self];
-            }
-            else if (!self.isBooted && [self.delegate respondsToSelector:@selector(device:didFailToBootWithError:)]) {
-                // No errors were raised, but the device remains unbooted
-                [self.delegate device:self didFailToBootWithError:[NSError errorWithDomain:NSCocoaErrorDomain code:1 userInfo:@{NSLocalizedDescriptionKey: @"Device failed to boot"}]];
-            }
-        }
-        
-        if (completion) {
-            if (self.isBooted) {
-                completion(nil);
-            }
-            else {
-                completion([NSError errorWithDomain:NSCocoaErrorDomain code:1 userInfo:@{NSLocalizedDescriptionKey: @"Failed to boot device"}]);
-            }
-        }
+        });
     });
 }
 

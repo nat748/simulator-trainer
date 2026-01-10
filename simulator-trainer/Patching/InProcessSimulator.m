@@ -421,6 +421,10 @@
     if (!deviceCoordinators) {
         return;
     }
+    
+    if (!color) {
+        color = [NSColor colorWithRed:0 green:0 blue:0 alpha:1];
+    }
 
     NSColorPanel *panel = [[NSColorPanel alloc] init];
     [panel setColor:color];

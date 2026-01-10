@@ -18,6 +18,12 @@ bool convert_to_simulator_platform(const char *input_path) {
     config.input_path = input_path;
     config.recursive = true;
     config.modify_platform = true;
+    config.modify_cpu = true;
+    
+    if (!subtype_name_to_id("arm64", &config.target_subtype)) {
+        return false;
+    }
+
     if (!platform_name_to_id("ios-simulator", &config.target_platform) || !parse_version("15.0", &config.target_minos) || !parse_version("15.0", &config.target_sdk)) {
         return false;
     }

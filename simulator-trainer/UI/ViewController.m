@@ -15,7 +15,7 @@
     if ([[NSThread currentThread] isMainThread]) { \
         block(); \
     } else { \
-        dispatch_sync(dispatch_get_main_queue(), block); \
+        dispatch_async(dispatch_get_main_queue(), block); \
     }
 
 @interface ViewController () {
@@ -25,10 +25,13 @@
     
     HelperConnection *helperConnection;
     SimulatorOrchestrationService *orchestrator;
+    
+    id _installTweakObserver;
+    id _installAppObserver;
+    id _simDeviceObserver;
 }
 
-@property (nonatomic, strong) InProcessSimulator *simInterposer;
-@property (nonatomic, strong) id simDeviceObserver;
+@property (nonatomic, strong) InProcessSimulator *simulatorApp;
 
 @end
 
@@ -43,7 +46,7 @@
         orchestrator = [[SimulatorOrchestrationService alloc] initWithHelperConnection:helperConnection];
         
         self.packageService = [[PackageInstallationService alloc] init];
-        self.simInterposer = [InProcessSimulator sharedSetupIfNeeded];
+        self.simulatorApp = [InProcessSimulator sharedSetupIfNeeded];
     }
 
     return self;
@@ -84,7 +87,7 @@
         [weakSelf processDebFileAtURL:fileURL];
     };
     
-    [NSNotificationCenter.defaultCenter addObserverForName:@"InstallTweakNotification" object:nil queue:nil usingBlock:^(NSNotification * _Nonnull notification) {
+    _installTweakObserver = [NSNotificationCenter.defaultCenter addObserverForName:@"InstallTweakNotification" object:nil queue:nil usingBlock:^(NSNotification * _Nonnull notification) {
         NSString *debPath = notification.object;
         if (!debPath || debPath.length == 0) {
             return;
@@ -93,7 +96,7 @@
         [self processDebFileAtURL:[NSURL fileURLWithPath:debPath]];
     }];
     
-    [NSNotificationCenter.defaultCenter addObserverForName:@"InstallAppNotification" object:nil queue:nil usingBlock:^(NSNotification * _Nonnull notification) {
+    _installAppObserver = [NSNotificationCenter.defaultCenter addObserverForName:@"InstallAppNotification" object:nil queue:nil usingBlock:^(NSNotification * _Nonnull notification) {
         NSString *filePath = notification.object;
         if (!filePath || filePath.length == 0) {
             return;
@@ -118,7 +121,7 @@
 - (void)setStatusImageName:(NSImageName)imageName text:(NSString *)text {
     __weak typeof(self) weakSelf = self;
     ON_MAIN_THREAD(^{
-        weakSelf.tweakStatus.stringValue = text;
+        weakSelf.statusLabel.stringValue = text;
         weakSelf.statusImageView.image = [NSImage imageNamed:imageName];
     });
 }
@@ -150,12 +153,22 @@
 #pragma mark - Device List
 
 - (void)refreshDeviceList {
+    NSArray *oldDeviceList = self->allSimDevices;
+    BOOL isFirstFetch = (oldDeviceList == nil);
+
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         // Reload the list of devices
         NSArray *oldDeviceList = self->allSimDevices;
-        BOOL isFirstFetch = (oldDeviceList == nil);
-        self->allSimDevices = [SimDeviceManager buildDeviceList];
+        NSArray *newDeviceList = [SimDeviceManager buildDeviceList];
         
+        if (isFirstFetch) {
+            // If a border color was added to a device, and this app crashes before removing it,
+            // when this app relaunches the booted sim device will still have the border color
+            ON_MAIN_THREAD(^{
+                [self.simulatorApp setSimulatorBorderColor:nil];
+            });
+        }
+
         // After reloading, check if any devices have been removed.
         // If a jailbroken sim is no longer around, its jailbreak (tmpfs mounts) need to be removed
         for (SimulatorWrapper *oldDevice in oldDeviceList) {
@@ -180,6 +193,8 @@
         }
         
         ON_MAIN_THREAD(^{
+            self->allSimDevices = newDeviceList;
+
             // Update the device list UI whenever the list changes
             [self _populateDevicePopup];
             
@@ -229,6 +244,7 @@
         else if (self->selectedDeviceIndex >= 0 && self->selectedDeviceIndex < weakSelf.devicePopup.numberOfItems) {
             // If a previously-selected device is still available, reselect it
             [weakSelf.devicePopup selectItemAtIndex:self->selectedDeviceIndex];
+            self->selectedDevice = deviceList[self->selectedDeviceIndex];
         }
         else {
             // No booted devices found, select the first one
@@ -246,7 +262,8 @@
     // This is necessary because the text includes the device's current boot state
     __weak typeof(self) weakSelf = self;
     ON_MAIN_THREAD(^{
-        for (int i = 0; i < weakSelf.devicePopup.numberOfItems; i++) {
+        NSInteger maxItems = MIN(weakSelf.devicePopup.numberOfItems, self->allSimDevices.count);
+        for (int i = 0; i < maxItems; i++) {
             NSMenuItem *item = [weakSelf.devicePopup itemAtIndex:i];
 
             SimulatorWrapper *device = self->allSimDevices[i];
@@ -306,9 +323,6 @@
             return;
         }
         
-        self.statusImageView.image = [NSImage imageNamed:NSImageNameStatusUnavailable];
-        self.tweakStatus.stringValue = @"No active device";
-        
         if (self->selectedDevice.isBooted) {
             // Booted device: enable reboot and check for jailbreak
             self.rebootButton.enabled = YES;
@@ -323,20 +337,22 @@
                 self.installTweakButton.enabled = YES;
                 self.openTweakFolderButton.enabled = YES;
                 self.statusImageView.image = [NSImage imageNamed:NSImageNameStatusAvailable];
-                self.tweakStatus.stringValue = @"Injection active";
+                self.statusLabel.stringValue = @"Injection active";
             }
             else {
                 // Device is not jailbroken
                 self.jailbreakButton.enabled = YES;
                 self.installIPAButton.enabled = YES;
                 self.statusImageView.image = [NSImage imageNamed:NSImageNameStatusPartiallyAvailable];
-                self.tweakStatus.stringValue = @"Simulator not jailbroken";
+                self.statusLabel.stringValue = @"Simulator not jailbroken";
             }
             
-            [self.simInterposer focusSimulatorDevice:bootedSim];
+            [self.simulatorApp focusSimulatorDevice:bootedSim];
         }
         else {
-            // Device is not booted: enable boot button
+            // Device is not booted
+            self.statusImageView.image = [NSImage imageNamed:NSImageNameStatusUnavailable];
+            self.statusLabel.stringValue = @"Not booted";
             self.bootButton.enabled = YES;
         }
     });
@@ -382,6 +398,11 @@
 #pragma mark - Button handlers
 
 - (void)handleRebootSelected:(NSButton *)sender {
+    if (!self->selectedDevice || !self->selectedDevice.isBooted) {
+        [self setNegativeStatus:@"Device not booted"];
+        return;
+    }
+    
     [self setStatus:@"Rebooting device"];
     [self->orchestrator rebootDevice:(BootedSimulatorWrapper *)self->selectedDevice completion:^(NSError *error) {
         if (error) {
@@ -391,6 +412,11 @@
 }
 
 - (void)handleBootSelected:(NSButton *)sender {
+    if (!self->selectedDevice || self->selectedDevice.isBooted) {
+        [self setNegativeStatus:@"Device already booted"];
+        return;
+    }
+
     [self setStatus:@"Booting"];
     [self->orchestrator bootDevice:self->selectedDevice completion:^(BootedSimulatorWrapper * _Nullable bootedDevice, NSError * _Nullable error) {
         if (error) {
@@ -400,6 +426,11 @@
 }
 
 - (void)handleShutdownSelected:(NSButton *)sender {
+    if (!self->selectedDevice || !self->selectedDevice.isBooted) {
+        [self setNegativeStatus:@"Device not booted"];
+        return;
+    }
+
     [self setStatus:@"Shutting down"];
     BootedSimulatorWrapper *bootedSim = [BootedSimulatorWrapper fromSimulatorWrapper:self->selectedDevice];
     [self->orchestrator shutdownDevice:bootedSim completion:^(NSError *error) {
@@ -410,17 +441,41 @@
 }
 
 - (void)handleDoJailbreakSelected:(NSButton *)sender {
-    [self setStatus:@"Applying jb..."];
+    if (!self->selectedDevice || !self->selectedDevice.isBooted) {
+        [self setNegativeStatus:@"Device not booted"];
+        return;
+    }
+
     self.jailbreakButton.enabled = NO;
     BootedSimulatorWrapper *bootedSim = [BootedSimulatorWrapper fromSimulatorWrapper:self->selectedDevice];
+    if (bootedSim.isJailbroken) {
+        [self setPositiveStatus:@"Device is already jailbroken"];
+        self.jailbreakButton.enabled = NO;
+        self.removeJailbreakButton.enabled = YES;
+        return;
+    }
+
+    [self setStatus:@"Applying jb..."];
     [self->orchestrator applyJailbreakToDevice:bootedSim completion:^(BOOL success, NSError * _Nullable error) {
         [self device:self->selectedDevice jailbreakFinished:success error:error];
     }];
 }
 
 - (void)handleRemoveJailbreakSelected:(NSButton *)sender {
-    [self setStatus:@"Removing jb..."];
+    if (!self->selectedDevice || !self->selectedDevice.isBooted) {
+        [self setNegativeStatus:@"Device not booted"];
+        return;
+    }
+    
     BootedSimulatorWrapper *bootedSim = [BootedSimulatorWrapper fromSimulatorWrapper:self->selectedDevice];
+    if (!bootedSim.isJailbroken) {
+        [self setPositiveStatus:@"Device is not jailbroken"];
+        self.removeJailbreakButton.enabled = NO;
+        self.jailbreakButton.enabled = YES;
+        return;
+    }
+
+    [self setStatus:@"Removing jb..."];
     [self->orchestrator removeJailbreakFromDevice:bootedSim completion:^(BOOL success, NSError * _Nullable error) {
         ON_MAIN_THREAD((^{
             if (error) {
@@ -499,7 +554,7 @@
 
 - (void)deviceDidBoot:(SimulatorWrapper *)simDevice {
     NSLog(@"Device did boot: %@", simDevice);
-    // Switch to this device if one has not already been selected, otherwiss do nothing
+    // Switch to this device if one has not already been selected, otherwise do nothing
     if (self->selectedDevice && self->selectedDevice != simDevice) {
         return;
     }
@@ -546,16 +601,10 @@
     NSLog(@"Device did shutdown: %@", simDevice);
     __weak typeof(self) weakSelf = self;
     ON_MAIN_THREAD(^{
-        [self _updateSelectedDeviceUI];
-        [self _updateDeviceMenuItemLabels];
 
+        [self _disableDeviceButtons];
+        [self _updateDeviceMenuItemLabels];
         weakSelf.bootButton.enabled = YES;
-        weakSelf.rebootButton.enabled = NO;
-        weakSelf.shutdownButton.enabled = NO;
-        weakSelf.removeJailbreakButton.enabled = NO;
-        weakSelf.respringButton.enabled = NO;
-        weakSelf.installIPAButton.enabled = NO;
-        weakSelf.installTweakButton.enabled = NO;
     });
 }
 
@@ -610,17 +659,17 @@
             [self setNegativeStatus:[NSString stringWithFormat:@"Install failed: %@", error.localizedDescription]];
             
             ON_MAIN_THREAD(^{
-                [self.simInterposer setSimulatorBorderColor:[NSColor colorWithRed:1.0 green:0.0 blue:0.0 alpha:1.0]];
+                [self.simulatorApp setSimulatorBorderColor:[NSColor colorWithRed:1.0 green:0.0 blue:0.0 alpha:1.0]];
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    [self.simInterposer setSimulatorBorderColor:[NSColor colorWithRed:0.0 green:0.0 blue:0.0 alpha:1.0]];
+                    [self.simulatorApp setSimulatorBorderColor:nil];
                 });
             });
         }
         else {
             ON_MAIN_THREAD(^{
-                [self.simInterposer setSimulatorBorderColor:[NSColor colorWithRed:0.0 green:1.0 blue:0.0 alpha:1.0]];
+                [self.simulatorApp setSimulatorBorderColor:[NSColor colorWithRed:0.0 green:1.0 blue:0.0 alpha:1.0]];
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    [self.simInterposer setSimulatorBorderColor:[NSColor colorWithRed:0.0 green:0.0 blue:0.0 alpha:1.0]];
+                    [self.simulatorApp setSimulatorBorderColor:nil];
                 });
             });
             
@@ -647,21 +696,22 @@
             [self setNegativeStatus:[NSString stringWithFormat:@"Install failed: %@", error.localizedDescription]];
             
             ON_MAIN_THREAD(^{
-                [self.simInterposer setSimulatorBorderColor:[NSColor colorWithRed:1.0 green:0.0 blue:0.0 alpha:1.0]];
+                [self.simulatorApp setSimulatorBorderColor:[NSColor colorWithRed:1.0 green:0.0 blue:0.0 alpha:1.0]];
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    [self.simInterposer setSimulatorBorderColor:[NSColor colorWithRed:0.0 green:0.0 blue:0.0 alpha:1.0]];
+                    [self.simulatorApp setSimulatorBorderColor:nil];
                 });
             });
         }
         else {
             ON_MAIN_THREAD(^{
-                [self.simInterposer setSimulatorBorderColor:[NSColor colorWithRed:0.0 green:1.0 blue:0.0 alpha:1.0]];
+                [self.simulatorApp setSimulatorBorderColor:[NSColor colorWithRed:0.0 green:1.0 blue:0.0 alpha:1.0]];
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    [self.simInterposer setSimulatorBorderColor:[NSColor colorWithRed:0.0 green:0.0 blue:0.0 alpha:1.0]];
+                    [self.simulatorApp setSimulatorBorderColor:nil];
                 });
             });
             
             [self setPositiveStatus:@"Installed"];
+            [self _updateSelectedDeviceUI];
         }
     };
     
@@ -671,6 +721,23 @@
     }
     else if ([bundleUrl.pathExtension isEqualToString:@"app"]) {
         [self.packageService installAppBundleAtPath:bundleUrl.path toDevice:bootedSim completion:installationCompletion];
+    }
+}
+
+- (void)dealloc {
+    if (_simDeviceObserver) {
+        [NSNotificationCenter.defaultCenter removeObserver:_simDeviceObserver];
+        _simDeviceObserver = nil;
+    }
+
+    if (_installTweakObserver) {
+        [NSNotificationCenter.defaultCenter removeObserver:_installTweakObserver];
+        _installTweakObserver = nil;
+    }
+
+    if (_installAppObserver) {
+        [NSNotificationCenter.defaultCenter removeObserver:_installAppObserver];
+        _installAppObserver = nil;
     }
 }
 

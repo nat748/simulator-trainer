@@ -316,102 +316,106 @@ static BOOL _overlayRootIsUnsafe(NSString *absDir, NSArray<NSString *> *mountPoi
 }
 
 - (void)installIpaAtPath:(NSString *)ipaPath toDevice:(BootedSimulatorWrapper *)device completion:(void (^)(NSError * _Nullable error))completion {
-    NSError *unzipError = nil;
-    NSString *tempUnzipDir = [NSTemporaryDirectory() stringByAppendingPathComponent:[[NSUUID UUID] UUIDString]];
-    if (![[NSFileManager defaultManager] createDirectoryAtPath:tempUnzipDir withIntermediateDirectories:YES attributes:nil error:&unzipError]) {
-        if (completion) {
-            completion(unzipError);
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSError *unzipError = nil;
+        NSString *tempUnzipDir = [NSTemporaryDirectory() stringByAppendingPathComponent:[[NSUUID UUID] UUIDString]];
+        if (![[NSFileManager defaultManager] createDirectoryAtPath:tempUnzipDir withIntermediateDirectories:YES attributes:nil error:&unzipError]) {
+            if (completion) {
+                completion(unzipError);
+            }
+            
+            return;
         }
         
-        return;
-    }
-    
-    if (![CommandRunner runCommand:@"/usr/bin/unzip" withArguments:@[@"-q", ipaPath, @"-d", tempUnzipDir] stdoutString:nil error:&unzipError]) {
-        [[NSFileManager defaultManager] removeItemAtPath:tempUnzipDir error:nil];
-        if (completion) {
-            completion(unzipError);
+        if (![CommandRunner runCommand:@"/usr/bin/unzip" withArguments:@[@"-q", ipaPath, @"-d", tempUnzipDir] stdoutString:nil error:&unzipError]) {
+            [[NSFileManager defaultManager] removeItemAtPath:tempUnzipDir error:nil];
+            if (completion) {
+                completion(unzipError);
+            }
+            
+            return;
         }
         
-        return;
-    }
-    
-    NSString *payloadDir = [tempUnzipDir stringByAppendingPathComponent:@"Payload"];
-    NSDirectoryEnumerator *dirEnumerator = [[NSFileManager defaultManager] enumeratorAtPath:payloadDir];
-    NSString *appRelativePath;
-    NSString *appBundlePath = nil;
-    while ((appRelativePath = [dirEnumerator nextObject])) {
-        if ([appRelativePath.pathExtension isEqualToString:@"app"]) {
-            appBundlePath = [payloadDir stringByAppendingPathComponent:appRelativePath];
-            break;
-        }
-    }
-    
-    if (!appBundlePath) {
-        [[NSFileManager defaultManager] removeItemAtPath:tempUnzipDir error:nil];
-        if (completion) {
-            completion([NSError errorWithDomain:NSCocoaErrorDomain code:103 userInfo:@{NSLocalizedDescriptionKey: @"No .app bundle found in the .ipa file"}]);
+        NSString *payloadDir = [tempUnzipDir stringByAppendingPathComponent:@"Payload"];
+        NSDirectoryEnumerator *dirEnumerator = [[NSFileManager defaultManager] enumeratorAtPath:payloadDir];
+        NSString *appRelativePath;
+        NSString *appBundlePath = nil;
+        while ((appRelativePath = [dirEnumerator nextObject])) {
+            if ([appRelativePath.pathExtension isEqualToString:@"app"]) {
+                appBundlePath = [payloadDir stringByAppendingPathComponent:appRelativePath];
+                break;
+            }
         }
         
-        return;
-    }
-    
-    [self installAppBundleAtPath:appBundlePath toDevice:device completion:^(NSError * _Nullable error) {
-        [[NSFileManager defaultManager] removeItemAtPath:tempUnzipDir error:nil];
-        if (completion) {
-            completion(error);
+        if (!appBundlePath) {
+            [[NSFileManager defaultManager] removeItemAtPath:tempUnzipDir error:nil];
+            if (completion) {
+                completion([NSError errorWithDomain:NSCocoaErrorDomain code:103 userInfo:@{NSLocalizedDescriptionKey: @"No .app bundle found in the .ipa file"}]);
+            }
+            
+            return;
         }
-    }];
+        
+        [self installAppBundleAtPath:appBundlePath toDevice:device completion:^(NSError * _Nullable error) {
+            [[NSFileManager defaultManager] removeItemAtPath:tempUnzipDir error:nil];
+            if (completion) {
+                completion(error);
+            }
+        }];
+    });
 }
 
 - (void)installAppBundleAtPath:(NSString *)appPath toDevice:(BootedSimulatorWrapper *)device completion:(void (^)(NSError * _Nullable error))completion {
-    NSString *appFileNameWithoutExtension = [[appPath lastPathComponent] stringByDeletingPathExtension];
-    NSString *randomizedName = [NSString stringWithFormat:@"%@-%@.%@", appFileNameWithoutExtension, [[NSUUID UUID] UUIDString], [appPath pathExtension]];
-    NSString *tmpAppPath = [NSTemporaryDirectory() stringByAppendingPathComponent:randomizedName];
-    NSError *copyError = nil;
-    if (![[NSFileManager defaultManager] copyItemAtPath:appPath toPath:tmpAppPath error:&copyError]) {
-        NSLog(@"Failed to copy app bundle to temporary location: %@", copyError);
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSString *appFileNameWithoutExtension = [[appPath lastPathComponent] stringByDeletingPathExtension];
+        NSString *randomizedName = [NSString stringWithFormat:@"%@-%@.%@", appFileNameWithoutExtension, [[NSUUID UUID] UUIDString], [appPath pathExtension]];
+        NSString *tmpAppPath = [NSTemporaryDirectory() stringByAppendingPathComponent:randomizedName];
+        NSError *copyError = nil;
+        if (![[NSFileManager defaultManager] copyItemAtPath:appPath toPath:tmpAppPath error:&copyError]) {
+            NSLog(@"Failed to copy app bundle to temporary location: %@", copyError);
+            if (completion) {
+                completion(copyError);
+            }
+            
+            return;
+        }
+        
+        convert_to_simulator_platform(tmpAppPath.UTF8String);
+        
+        // Sign every executable in the app bundle
+        NSDirectoryEnumerator *dirEnumerator = [[NSFileManager defaultManager] enumeratorAtPath:tmpAppPath];
+        NSString *fileRelativePath;
+        while ((fileRelativePath = [dirEnumerator nextObject])) {
+            NSString *fullPath = [tmpAppPath stringByAppendingPathComponent:fileRelativePath];
+            BOOL isDir;
+            if (![[NSFileManager defaultManager] fileExistsAtPath:fullPath isDirectory:&isDir] || isDir) {
+                continue;
+            }
+            
+            if ([AppBinaryPatcher isMachOFile:fullPath]) {
+                [AppBinaryPatcher codesignItemAtPath:fullPath completion:^(BOOL success, NSError * _Nullable error) {
+                    if (!success) {
+                        NSLog(@"Failed to codesign executable at path %@: %@", fullPath, error);
+                    }
+                }];
+            }
+        }
+        
+        NSError *installError = nil;
+        NSURL *tmpAppUrl = [NSURL fileURLWithPath:tmpAppPath];
+        // [device.coreSimDevice installApplication:tmpAppUrl withOptions:nil error:&installError]
+        ((void (*)(id, SEL, NSURL *, NSDictionary *, NSError **))objc_msgSend)(device.coreSimDevice, sel_registerName("installApplication:withOptions:error:"), tmpAppUrl, nil, &installError);
+        
+        if (installError) {
+            NSLog(@"Failed to install app bundle: %@", installError);
+        }
+        
         if (completion) {
-            completion(copyError);
+            completion(installError);
         }
         
-        return;
-    }
-    
-    convert_to_simulator_platform(tmpAppPath.UTF8String);
-    
-    // Sign every executable in the app bundle
-    NSDirectoryEnumerator *dirEnumerator = [[NSFileManager defaultManager] enumeratorAtPath:tmpAppPath];
-    NSString *fileRelativePath;
-    while ((fileRelativePath = [dirEnumerator nextObject])) {
-        NSString *fullPath = [tmpAppPath stringByAppendingPathComponent:fileRelativePath];
-        BOOL isDir;
-        if (![[NSFileManager defaultManager] fileExistsAtPath:fullPath isDirectory:&isDir] || isDir) {
-            continue;
-        }
-        
-        if ([AppBinaryPatcher isMachOFile:fullPath]) {
-            [AppBinaryPatcher codesignItemAtPath:fullPath completion:^(BOOL success, NSError * _Nullable error) {
-                if (!success) {
-                    NSLog(@"Failed to codesign executable at path %@: %@", fullPath, error);
-                }
-            }];
-        }
-    }
-    
-    NSError *installError = nil;
-    NSURL *tmpAppUrl = [NSURL fileURLWithPath:tmpAppPath];
-    // [device.coreSimDevice installApplication:tmpAppUrl withOptions:nil error:&installError]
-    ((void (*)(id, SEL, NSURL *, NSDictionary *, NSError **))objc_msgSend)(device.coreSimDevice, sel_registerName("installApplication:withOptions:error:"), tmpAppUrl, nil, &installError);
-    
-    if (installError) {
-        NSLog(@"Failed to install app bundle: %@", installError);
-    }
-    
-    if (completion) {
-        completion(installError);
-    }
-    
-    [[NSFileManager defaultManager] removeItemAtPath:tmpAppPath error:nil];
+        [[NSFileManager defaultManager] removeItemAtPath:tmpAppPath error:nil];
+    });
 }
 
 @end
